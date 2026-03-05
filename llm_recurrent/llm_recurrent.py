@@ -1,18 +1,16 @@
-import os
+import sys
 from pathlib import Path
-import random
 from typing import Optional
 
 import torch
-import torch.nn as nn
-import numpy as np
 from torch.nn import functional as F
-from torch.utils.tensorboard import SummaryWriter
-from torchinfo import summary
 import pickle
 
-from shared.train_env import *
+
+project_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(project_root))
 from shared.units import *
+from shared.model_env import TrainEnv
 from shared.module import *
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -46,13 +44,12 @@ class LLM_Recurrent(LLM_ModelBase):
         pass
 
 
-if __name__ == "__main__":
+def train():
     current_dir = Path(__file__).resolve().parent
-    os.chdir(current_dir)
     torch.set_float32_matmul_precision("high")
     # hyperparameters
     load_model = False
-    model_path = Path("llm_fixed_model/llm_fixed_model_260000.pth")
+    model_path = current_dir / Path("model/model.pth")
     # ------------
     train_env = TrainEnv()
     train_env.setup_tensorboard(Path("/root/tf-logs/llm_fixed"))
@@ -65,7 +62,9 @@ if __name__ == "__main__":
     )
 
     if load_model == False:
-        with Path("buffer/character_mapper.pkl").open("rb") as f:
+        with (current_dir / Path("../data_buffer/character_mapper.pkl")).open(
+            "rb"
+        ) as f:
             character_mapper = pickle.load(f)
         model = LLM_Recurrent(
             character_mapper,
@@ -78,7 +77,8 @@ if __name__ == "__main__":
     train_env.model_summary(input_size=(1, 512))
 
     train_env.load_data(
-        Path("../data_buffer/train_data.pt"), Path("../data_buffer/val_data.pt")
+        current_dir / Path("../data_buffer/train_data.pt"),
+        current_dir / Path("../data_buffer/val_data.pt"),
     )
 
     train_env.train_loop(
@@ -87,4 +87,9 @@ if __name__ == "__main__":
         batch_size=256,
         eval_iters=10,
         max_data_len=512,
+        save_dir=current_dir / Path("model"),
     )
+
+
+if __name__ == "__main__":
+    train()

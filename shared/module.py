@@ -1,12 +1,23 @@
-from collections.abc import Callable
-from math import fabs
 import torch
 from torch import nn
 from torch.nn import functional as F
 
-from units import CharacterMapper, get_batch
+from .units import CharacterMapper, get_batch
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+class FeatureActivation(nn.Module):
+    def __init__(self, input_dim: int, feature_dim: int):
+        super().__init__()
+        self.activation = nn.Sequential(
+            nn.Linear(input_dim, feature_dim // 4, bias=False),
+            nn.Linear(feature_dim // 4, feature_dim),
+            nn.SiLU(),
+        )
+
+    def forward(self, x: torch.Tensor):
+        return self.activation(x)
 
 
 class SharedWeightLayer(nn.Module):
@@ -78,17 +89,17 @@ class CharacterEmbedder(nn.Module):
 
 
 class AdaptiveVectorModifier(nn.Module):
-    def __init__(self, vector_dim: int, feature_dim: int):
+    def __init__(self, vector_dim: int, modifier_dim: int):
         super().__init__()
         self.vector_dim = vector_dim
-        self.feature_dim = feature_dim
+        self.modifier_dim = modifier_dim
 
         self.adaptive_matrix = nn.Sequential(
-            nn.Linear(feature_dim, feature_dim * 4),
+            nn.Linear(modifier_dim, modifier_dim * 4),
             nn.SiLU(),
-            nn.Linear(feature_dim * 4, feature_dim * feature_dim, bias=False),
+            nn.Linear(modifier_dim * 4, modifier_dim * modifier_dim),
         )
-        self.vector_map = SharedWeightLayer(vector_dim, feature_dim)
+        self.vector_map = SharedWeightLayer(vector_dim, modifier_dim)
 
     def forward(self, x: torch.Tensor):
         pre_shape = x.shape[:-1]
@@ -97,7 +108,7 @@ class AdaptiveVectorModifier(nn.Module):
         features = self.vector_map.a_to_b(x)
         # (..., feature_dim) -> (..., feature_dim, feature_dim)
         adaptive_matrix = self.adaptive_matrix(features).view(
-            -1, self.feature_dim, self.feature_dim
+            -1, self.modifier_dim, self.modifier_dim
         )
         # (..., feature_dim, feature_dim) @ (..., feature_dim) -> (..., feature_dim)
         features = torch.matmul(adaptive_matrix, features.unsqueeze(-1)).squeeze(-1)
@@ -105,6 +116,21 @@ class AdaptiveVectorModifier(nn.Module):
         modified_features = self.vector_map.b_to_a(features)
         x = x + modified_features
         return x.view(pre_shape + (self.vector_dim,))
+
+
+class ForgetModule(nn.Module):
+    def __init__(self, vec_dim: int, feature_dim: int):
+        super().__init__()
+
+        self.forget_gate = nn.Sequential(
+            FeatureActivation(vec_dim, feature_dim),
+            nn.Linear(feature_dim, vec_dim),
+        )
+
+    def forward(self, x: torch.Tensor):
+        fr = F.sigmoid(self.forget_gate(x))
+        x = x * fr
+        return x
 
 
 class Head(nn.Module):

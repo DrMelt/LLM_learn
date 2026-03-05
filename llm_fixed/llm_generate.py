@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import torch
 from torch.profiler import profile, ProfilerActivity, record_function
+
 from shared.module import LLM_ModelBase
 
 if __name__ == "__main__":
@@ -9,11 +10,7 @@ if __name__ == "__main__":
     os.chdir(current_dir)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model: LLM_ModelBase = (
-        torch.load(
-            f"llm_fixed_model/llm_fixed_model_{26*10000}.pth", weights_only=False
-        )
-        .to(device)
-        .eval()
+        torch.load(f"model/model_{26*10000}.pth", weights_only=False).to(device).eval()
     )
     character_mapper = model.vocab_map
 

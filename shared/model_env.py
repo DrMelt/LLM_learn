@@ -15,7 +15,9 @@ from .module import LLM_ModelBase
 
 
 class TrainEnv:
-    def __init__(self):
+    def __init__(
+        self,
+    ):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model: Optional[LLM_ModelBase] = None
         self.optimizer: Optional[torch.optim.Optimizer] = None
@@ -180,12 +182,13 @@ class TrainEnv:
         batch_size: int,
         eval_iters: int,
         max_data_len: int,
+        save_dir: Path,
     ):
         assert self.model is not None, "请先初始化模型"
 
         while True:
             if self.model.iter_n % save_iters == 0:
-                self.save_model()
+                self.save_model(save_dir=save_dir)
 
             if self.model.iter_n % eval_interval == 0:
                 losses = self.evaluate_model(

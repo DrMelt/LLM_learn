@@ -1,17 +1,17 @@
 import os
+import sys
 from pathlib import Path
 import random
 from typing import Optional
-
 import torch
 import torch.nn as nn
-import numpy as np
 from torch.nn import functional as F
-from torch.utils.tensorboard import SummaryWriter
-from torchinfo import summary
 import pickle
 
-from shared.train_env import TrainEnv
+project_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(project_root))
+
+from shared import module, units, model_env
 from shared.units import *
 from shared.module import *
 
@@ -21,23 +21,21 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 class LLMFixedBlock(nn.Module):
     def __init__(self, a_embd: int, b_embd: int, head_nums: int, head_size: int):
         super().__init__()
-        self.block_a2b = Block_A2B(
+        self.block_a2b = module.Block_A2B(
             a_embd=a_embd,
             b_embd=b_embd,
             n_head=head_nums // 2,
             head_size=head_size // 2,
         )
-        self.block_self = Block_Self(
+        self.block_self = module.Block_Self(
             n_embd=b_embd, n_head=head_nums, head_size=head_size
         )
-        self.adaptive_norm = AdaptiveVectorModifier(
-            vector_dim=b_embd, feature_dim=b_embd // 8
-        )
+        self.adaptive_norm = ForgetModule(vec_dim=b_embd, feature_dim=b_embd)
 
     def forward(self, a, b):
+        b = self.adaptive_norm(b)
         b = self.block_a2b(a, b)
         b = self.block_self(b)
-        b = self.adaptive_norm(b)
         return b
 
 
@@ -81,10 +79,10 @@ class LLMFixedVec2Word(nn.Module):
         return logits
 
 
-class LLMFixedModel(LLM_ModelBase):
+class LLMFixedModel(module.LLM_ModelBase):
     def __init__(
         self,
-        vocab_map: CharacterMapper,
+        vocab_map: units.CharacterMapper,
         token_embd: int,
         head_nums: int,
         head_size: int,
@@ -104,7 +102,7 @@ class LLMFixedModel(LLM_ModelBase):
         self.register_buffer("infer_arange", torch.arange(infer_vec_nums))
         self.infer_vec_embedder = nn.Embedding(infer_vec_nums, infer_dim)
         # each token directly reads off the logits for the next token from a lookup table
-        self.embedder = CharacterEmbedder(
+        self.embedder = module.CharacterEmbedder(
             vocab_size=vocab_map.max_vocab_size, n_embd=token_embd
         )
 
@@ -204,7 +202,7 @@ class LLMFixedModel(LLM_ModelBase):
         scheduler: torch.optim.lr_scheduler.LRScheduler,
     ):
         data_sample_len = random.randint(1, max_data_len)
-        xb, yb = get_batch(
+        xb, yb = units.get_batch(
             data=data,
             block_size=data_sample_len,
             batch_size=batch_size,
@@ -221,16 +219,36 @@ class LLMFixedModel(LLM_ModelBase):
         self.iter_n += 1
 
 
-if __name__ == "__main__":
+def train():
     current_dir = Path(__file__).resolve().parent
-    os.chdir(current_dir)
     torch.set_float32_matmul_precision("high")
     # hyperparameters
     load_model = False
-    model_path = Path("llm_fixed_model/llm_fixed_model_260000.pth")
+    model_path = current_dir / Path("model/model_260000.pth")
     # ------------
-    train_env = TrainEnv()
+    train_env = model_env.TrainEnv()
     train_env.setup_tensorboard(Path("/root/tf-logs/llm_fixed"))
+
+    if load_model == False:
+        with (current_dir / Path("../data_buffer/character_mapper.pkl")).open(
+            "rb"
+        ) as f:
+            character_mapper: units.CharacterMapper = pickle.load(f)
+        model = LLMFixedModel(
+            character_mapper,
+            token_embd=128,
+            head_nums=8,
+            head_size=64,
+            n_layer=8,
+            infer_vec_nums=32,
+            infer_dim=256,
+            out_nums=4,
+        )
+        train_env.set_model(model)
+    else:
+        train_env.load_model(model_path=model_path)
+    train_env.model_summary(input_size=(1, 512))
+
     train_env.setup_optimizers(
         learning_rate=2e-4,
         warmup_iters=5000,
@@ -239,27 +257,9 @@ if __name__ == "__main__":
         cos_eta_min=1e-6,
     )
 
-    if load_model == False:
-        with Path("buffer/character_mapper.pkl").open("rb") as f:
-            character_mapper = pickle.load(f)
-        model = LLMFixedModel(
-            character_mapper,
-            token_embd=64,
-            head_nums=8,
-            head_size=64,
-            n_layer=8,
-            infer_vec_nums=64,
-            infer_dim=256,
-            out_nums=4,
-        )
-        train_env.set_model(model)
-    else:
-        train_env.load_model(model_path=model_path)
-
-    train_env.model_summary(input_size=(1, 512))
-
     train_env.load_data(
-        Path("../data_buffer/train_data.pt"), Path("../data_buffer/val_data.pt")
+        current_dir / Path("../data_buffer/train_data.pt"),
+        current_dir / Path("../data_buffer/val_data.pt"),
     )
 
     train_env.train_loop(
@@ -268,4 +268,9 @@ if __name__ == "__main__":
         batch_size=256,
         eval_iters=10,
         max_data_len=512,
+        save_dir=current_dir / Path("model"),
     )
+
+
+if __name__ == "__main__":
+    train()
