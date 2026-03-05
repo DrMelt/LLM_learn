@@ -316,6 +316,11 @@ class LLM_ModelBase(nn.Module):
         # idx is (B, T) array of indices in the current context
         raise NotImplementedError("generate method must be implemented in subclass")
 
+    def _target_offset_func(self, block_size: int) -> int:
+        raise NotImplementedError(
+            "target_offset_func method must be implemented in subclass"
+        )
+
     @torch.no_grad()
     def estimate_loss(
         self,
@@ -324,7 +329,6 @@ class LLM_ModelBase(nn.Module):
         eval_iters: int,
         train_data: torch.Tensor,
         val_data: torch.Tensor,
-        target_offset_func: Callable[[int], int],
     ):
         out = {}
         self.eval()
@@ -343,7 +347,7 @@ class LLM_ModelBase(nn.Module):
                     block_size=block_size_samples[k],
                     batch_size=batch_size,
                     target_len=self.out_nums,
-                    target_offset=target_offset_func(block_size_samples[k]),
+                    target_offset=self._target_offset_func(block_size_samples[k]),
                 )
                 logits, loss = self(X, Y)
                 losses[k] = loss.item()

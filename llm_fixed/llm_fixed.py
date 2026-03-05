@@ -146,6 +146,9 @@ class LLMFixedModel(LLM_ModelBase):
             if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
 
+    def _target_offset_func(self, block_size: int) -> int:
+        return block_size
+
     def forward(
         self, idx: torch.Tensor, targets: Optional[torch.Tensor] = None
     ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
@@ -296,7 +299,6 @@ if __name__ == "__main__":
                 eval_iters=eval_iters,
                 train_data=train_data,
                 val_data=val_data,
-                target_offset_func=lambda x: x,
             )
 
             print(

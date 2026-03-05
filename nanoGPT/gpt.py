@@ -8,8 +8,8 @@ import numpy as np
 from torch.nn import functional as F
 from torch.utils.tensorboard import SummaryWriter
 
-from units import *
-from module import *
+from shared.units import *
+from shared.module import *
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
