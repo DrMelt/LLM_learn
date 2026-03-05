@@ -204,14 +204,32 @@ class Head_A2B(nn.Module):
         k = self.key(a)  # (B, a_size, hs)
         q = self.query(b)  # (B, b_size, hs)
         # compute attention scores ("affinities")
-        wei = (
-            q @ k.transpose(-2, -1) * self.head_size**-0.5
+        wei = q @ k.transpose(
+            -2, -1
         )  # (B, b_size, hs) @ (B, hs, a_size) -> (B, b_size, a_size)
 
-        wei = F.softmax(wei, dim=-1)  # (B, b_size, a_size)
+        wei = F.softmax(wei * self.head_size**-0.5, dim=-1)  # (B, b_size, a_size)
         # perform the weighted aggregation of the values
         val = self.value(a)  # (B, a_size, hs)
         out = wei @ val  # (B, b_size, a_size) @ (B, a_size, hs) -> (B, b_size, hs)
+        return out
+
+
+class Head_A2B_Lite(nn.Module):
+    def __init__(self, a_n_embd: int, b_n_embd: int):
+        super().__init__()
+        self.a_n_embd = a_n_embd
+        self.query = nn.Linear(b_n_embd, a_n_embd, bias=False)
+
+    def forward(self, a, b):
+        q = self.query(b)  # (B, b_size, a_n_embd)
+        wei = q @ a.transpose(
+            -2, -1
+        )  # (B, b_size, a_n_embd) @ (B, a_n_embd, a_size) -> (B, b_size, a_size)
+        wei = F.softmax(wei * self.a_n_embd**-0.5, dim=-1)  # (B, b_size, a_size)
+        out = (
+            wei @ a
+        )  # (B, b_size, a_size) @ (B, a_size, a_n_embd) -> (B, b_size, a_n_embd)
         return out
 
 
@@ -259,6 +277,18 @@ class MultiHeadAttention_A2B(nn.Module):
         return out
 
 
+class MultiHeadAttention_A2B_Lite(nn.Module):
+    def __init__(self, a_embd: int, b_embd: int):
+        super().__init__()
+        self.head = Head_A2B_Lite(a_embd, b_embd)
+        self.proj = nn.Linear(a_embd, b_embd, bias=False)
+
+    def forward(self, a, b):
+        out = self.head(a, b)  # (B, b_size, a_n_embd)
+        out = self.proj(out)  # (B, b_size, b_embd)
+        return out
+
+
 class FeedFoward(nn.Module):
     """a simple linear layer followed by a non-linearity"""
 
@@ -289,8 +319,8 @@ class Block(nn.Module):
         self.ffwd = FeedFoward(n_embd=n_embd, active_nums=4 * n_embd)
 
     def forward(self, x):
-        added = x + self.sa(x)  # 向原特征向量添加修饰
-        x = x + self.ffwd(added)  # 从新向量提取信息
+        x = x + self.sa(x)  # 向原特征向量添加修饰
+        x = x + self.ffwd(x)  # 从新向量提取信息
         return x
 
 
@@ -307,8 +337,22 @@ class Block_A2B(nn.Module):
         self.ffwd = FeedFoward(n_embd=b_embd, active_nums=2 * b_embd)
 
     def forward(self, a, b):
-        added = b + self.sa(a, b)  # 向原特征向量添加修饰
-        b = b + self.ffwd(added)  # 从新向量提取信息
+        b = b + self.sa(a, b)  # 向原特征向量添加修饰
+        b = b + self.ffwd(b)  # 从新向量提取信息
+        return b
+
+
+class Block_A2B_Lite(nn.Module):
+    def __init__(self, a_embd: int, b_embd: int):
+        super().__init__()
+
+        self.sa = MultiHeadAttention_A2B_Lite(
+            a_embd=a_embd,
+            b_embd=b_embd,
+        )
+
+    def forward(self, a, b):
+        b = b + self.sa(a, b)  # 向原特征向量添加修饰
         return b
 
 
