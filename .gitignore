@@ -5,6 +5,6 @@ __pycache__
 inputs
 data_buffer
 model
-
+forecast.txt
 nanoGPT/llm_fixed_model
 
