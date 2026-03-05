@@ -11,6 +11,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torchinfo import summary
 import pickle
 
+from shared.train_env import TrainEnv
 from shared.units import *
 from shared.module import *
 
@@ -96,8 +97,6 @@ class LLMFixedModel(LLM_ModelBase):
             vocab_map=vocab_map,
             out_nums=out_nums,
         )
-        self.iter_n = 0
-
         self.out_nums = out_nums
         self.token_embd = token_embd
         self.info_n_embd = infer_dim
@@ -199,6 +198,7 @@ class LLMFixedModel(LLM_ModelBase):
     def train_step(
         self,
         data: torch.Tensor,
+        max_data_len: int,
         batch_size: int,
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler.LRScheduler,
@@ -222,27 +222,25 @@ class LLMFixedModel(LLM_ModelBase):
 
 
 if __name__ == "__main__":
-    torch.set_float32_matmul_precision("high")
-    # hyperparameters
-    max_data_len = 512
-    batch_size = 256
-    learning_rate = 2e-4
-    warmup_iters = 5000
-    save_iters = 10000
-    eval_interval = 1000
-    eval_iters = 10
-
-    out_nums = 4
-
-    load_model = False
-    model_path = "llm_fixed_model/llm_fixed_model_260000.pth"
-    # ------------
     current_dir = Path(__file__).resolve().parent
     os.chdir(current_dir)
-    writer = SummaryWriter("/root/tf-logs/llm_fixed")
+    torch.set_float32_matmul_precision("high")
+    # hyperparameters
+    load_model = False
+    model_path = Path("llm_fixed_model/llm_fixed_model_260000.pth")
+    # ------------
+    train_env = TrainEnv()
+    train_env.setup_tensorboard(Path("/root/tf-logs/llm_fixed"))
+    train_env.setup_optimizers(
+        learning_rate=2e-4,
+        warmup_iters=5000,
+        cos_T_0=4096,
+        cos_T_mult=2,
+        cos_eta_min=1e-6,
+    )
 
     if load_model == False:
-        with open("buffer/character_mapper.pkl", "rb") as f:
+        with Path("buffer/character_mapper.pkl").open("rb") as f:
             character_mapper = pickle.load(f)
         model = LLMFixedModel(
             character_mapper,
@@ -252,65 +250,22 @@ if __name__ == "__main__":
             n_layer=8,
             infer_vec_nums=64,
             infer_dim=256,
-            out_nums=out_nums,
+            out_nums=4,
         )
+        train_env.set_model(model)
     else:
-        model: LLMFixedModel = torch.load(model_path, weights_only=False)
-        character_mapper = model.vocab_map
+        train_env.load_model(model_path=model_path)
 
-    model.to(device).train()
-    summary(
-        model,
-        input_size=(1, max_data_len),
-        dtypes=[torch.long],
-        row_settings=["var_names"],
+    train_env.model_summary(input_size=(1, 512))
+
+    train_env.load_data(
+        Path("../data_buffer/train_data.pt"), Path("../data_buffer/val_data.pt")
     )
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
-    warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
-        optimizer,
-        start_factor=1e-2,
-        end_factor=1.0,
-        total_iters=warmup_iters,
+    train_env.train_loop(
+        save_iters=10000,
+        eval_interval=1000,
+        batch_size=256,
+        eval_iters=10,
+        max_data_len=512,
     )
-    cos_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-        optimizer,
-        T_0=4096,  # 第一次重启前的迭代次数
-        T_mult=2,  # 重启后周期倍增
-        eta_min=1e-6,
-    )
-    scheduler = torch.optim.lr_scheduler.SequentialLR(
-        optimizer,
-        schedulers=[warmup_scheduler, cos_scheduler],
-        milestones=[warmup_iters],
-    )
-
-    train_data = torch.load("buffer/train_data.pt")
-    val_data = torch.load("buffer/val_data.pt")
-
-    while True:
-        if model.iter_n % save_iters == 0:
-            torch.save(model, f"llm_fixed_model/llm_fixed_model_{model.iter_n}.pth")
-
-        if model.iter_n % eval_interval == 0:
-            losses = model.estimate_loss(
-                block_size_range=(1, max_data_len),
-                batch_size=batch_size,
-                eval_iters=eval_iters,
-                train_data=train_data,
-                val_data=val_data,
-            )
-
-            print(
-                f"step {model.iter_n}\t lr {scheduler.get_last_lr()[0]:.2e}\t train loss {losses['train']:.4e}\t val loss {losses['val']:.4e}"
-            )
-            writer.add_scalar("Learning Rate", scheduler.get_last_lr()[0], model.iter_n)
-            writer.add_scalar("Loss/train", losses["train"], model.iter_n)
-            writer.add_scalar("Loss/val", losses["val"], model.iter_n)
-
-        model.train_step(
-            data=train_data,
-            batch_size=batch_size,
-            optimizer=optimizer,
-            scheduler=scheduler,
-        )

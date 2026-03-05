@@ -11,6 +11,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torchinfo import summary
 import pickle
 
+from shared.train_env import *
 from shared.units import *
 from shared.module import *
 
@@ -46,4 +47,44 @@ class LLM_Recurrent(LLM_ModelBase):
 
 
 if __name__ == "__main__":
-    pass
+    current_dir = Path(__file__).resolve().parent
+    os.chdir(current_dir)
+    torch.set_float32_matmul_precision("high")
+    # hyperparameters
+    load_model = False
+    model_path = Path("llm_fixed_model/llm_fixed_model_260000.pth")
+    # ------------
+    train_env = TrainEnv()
+    train_env.setup_tensorboard(Path("/root/tf-logs/llm_fixed"))
+    train_env.setup_optimizers(
+        learning_rate=2e-4,
+        warmup_iters=5000,
+        cos_T_0=4096,
+        cos_T_mult=2,
+        cos_eta_min=1e-6,
+    )
+
+    if load_model == False:
+        with Path("buffer/character_mapper.pkl").open("rb") as f:
+            character_mapper = pickle.load(f)
+        model = LLM_Recurrent(
+            character_mapper,
+            out_nums=4,
+        )
+        train_env.set_model(model)
+    else:
+        train_env.load_model(model_path=model_path)
+
+    train_env.model_summary(input_size=(1, 512))
+
+    train_env.load_data(
+        Path("../data_buffer/train_data.pt"), Path("../data_buffer/val_data.pt")
+    )
+
+    train_env.train_loop(
+        save_iters=10000,
+        eval_interval=1000,
+        batch_size=256,
+        eval_iters=10,
+        max_data_len=512,
+    )

@@ -306,9 +306,20 @@ class Block_Self(nn.Module):
 class LLM_ModelBase(nn.Module):
     def __init__(self, vocab_map: CharacterMapper, out_nums: int):
         super().__init__()
+        self.iter_n: int = 0
 
         self.vocab_map: CharacterMapper = vocab_map
         self.out_nums: int = out_nums
+
+    def train_step(
+        self,
+        data: torch.Tensor,
+        max_data_len: int,
+        batch_size: int,
+        optimizer: torch.optim.Optimizer,
+        scheduler: torch.optim.lr_scheduler.LRScheduler,
+    ):
+        raise NotImplementedError("train_step method must be implemented in subclass")
 
     def generate(
         self, idx: torch.Tensor, max_new_tokens: int, temperature: float = 1.0
