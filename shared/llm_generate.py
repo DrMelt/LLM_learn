@@ -10,9 +10,7 @@ from torch.nn import functional as F
 import torch
 from torch.profiler import profile, ProfilerActivity, record_function
 
-from gpt import *
-from llm_fixed import *
-
+from shared.module import LLM_ModelBase
 
 if __name__ == "__main__":
     current_dir = Path(__file__).resolve().parent

@@ -3,8 +3,8 @@
 .lingma
 __pycache__
 inputs
+data_buffer
 
 
-nanoGPT/more.txt
 nanoGPT/llm_fixed_model
-nanoGPT/buffer
+shared/out

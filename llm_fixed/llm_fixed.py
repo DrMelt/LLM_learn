@@ -11,8 +11,8 @@ from torch.utils.tensorboard import SummaryWriter
 from torchinfo import summary
 import pickle
 
-from units import *
-from module import *
+from shared.units import *
+from shared.module import *
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
