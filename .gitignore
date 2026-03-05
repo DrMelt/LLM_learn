@@ -1,4 +1,6 @@
 .vscode
+.venv
+.lingma
 __pycache__
 inputs
 nanoGPT/more.txt

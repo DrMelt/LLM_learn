@@ -151,8 +151,6 @@ def get_batch(
     return x.to(device), y.to(device)
 
 
-
-
 if __name__ == "__main__":
     current_dir = Path(__file__).resolve().parent
     os.chdir(current_dir)
