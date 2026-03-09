@@ -16,7 +16,7 @@ if __name__ == "__main__":
     current_dir = Path(__file__).resolve().parent
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model: LLMFixedModel = (
-        torch.load(current_dir / f"model/model_{22*10000}.pth", weights_only=False)
+        torch.load(current_dir / f"model/model_{100*10000}.pth", weights_only=False)
         .to(device)
         .eval()
     )

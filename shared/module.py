@@ -20,7 +20,7 @@ class FeatureActivation(nn.Module):
         return self.activation(x)
 
 
-class SharedWeightLayer(nn.Module):
+class SharedWeightLinear(nn.Module):
     def __init__(self, a_dim: int, b_dim: int):
         super().__init__()
         self.weight = nn.Parameter(torch.empty(b_dim, a_dim))
@@ -99,7 +99,7 @@ class AdaptiveVectorModifier(nn.Module):
             nn.SiLU(),
             nn.Linear(modifier_dim * 4, modifier_dim * modifier_dim),
         )
-        self.vector_map = SharedWeightLayer(vector_dim, modifier_dim)
+        self.vector_map = SharedWeightLinear(vector_dim, modifier_dim)
 
     def forward(self, x: torch.Tensor):
         pre_shape = x.shape[:-1]
@@ -119,17 +119,17 @@ class AdaptiveVectorModifier(nn.Module):
 
 
 class ForgetModule(nn.Module):
-    def __init__(self, vec_dim: int, feature_dim: int):
+    def __init__(self, vec_dim: int):
         super().__init__()
 
-        self.forget_gate = nn.Sequential(
-            FeatureActivation(vec_dim, feature_dim),
-            nn.Linear(feature_dim, vec_dim),
-        )
+        self.forget_gate = nn.Sequential(nn.Linear(vec_dim, vec_dim), nn.Tanh())
+        self.trans = SharedWeightLinear(vec_dim, vec_dim)
 
     def forward(self, x: torch.Tensor):
-        fr = F.sigmoid(self.forget_gate(x))
+        fr = self.forget_gate(x)
+        x = self.trans.a_to_b(x)
         x = x * fr
+        x = self.trans.b_to_a(x)
         return x
 
 
@@ -350,9 +350,11 @@ class Block_A2B_Lite(nn.Module):
             a_embd=a_embd,
             b_embd=b_embd,
         )
+        self.ffwd = FeedFoward(n_embd=b_embd, active_nums=4 * b_embd)
 
     def forward(self, a, b):
-        b = b + self.sa(a, b)  # 向原特征向量添加修饰
+        b = b + self.sa(a, b)  # 向原特征向量添加修饰\
+        b = b + self.ffwd(b)  # 从新向量提取信息
         return b
 
 
@@ -419,12 +421,12 @@ class LLM_ModelBase(nn.Module):
             steps=eval_iters,
             dtype=torch.int32,
         ).tolist()
+        data = {"train": train_data, "val": val_data}
         for split in ["train", "val"]:
             losses = torch.zeros(eval_iters)
             for k in range(eval_iters):
-                data = train_data if split == "train" else val_data
                 X, Y = get_batch(
-                    data=data,
+                    data=data[split],
                     block_size=block_size_samples[k],
                     batch_size=batch_size,
                     target_len=self.out_nums,

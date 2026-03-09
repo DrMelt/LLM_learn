@@ -21,16 +21,16 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 class LLMFixedBlock(nn.Module):
     def __init__(self, a_embd: int, b_embd: int, head_nums: int, head_size: int):
         super().__init__()
+        self.adaptive_norm = ForgetModule(vec_dim=b_embd)
         self.block_a2b = module.Block_A2B(
             a_embd=a_embd,
             b_embd=b_embd,
-            n_head=head_nums // 2,
-            head_size=head_size // 2,
+            n_head=head_nums,
+            head_size=head_size,
         )
         self.block_self = module.Block_Self(
             n_embd=b_embd, n_head=head_nums, head_size=head_size
         )
-        self.adaptive_norm = ForgetModule(vec_dim=b_embd, feature_dim=b_embd)
 
     def forward(self, a, b):
         b = self.adaptive_norm(b)
@@ -237,9 +237,9 @@ def train():
         model = LLMFixedModel(
             character_mapper,
             token_embd=128,
-            head_nums=8,
+            head_nums=4,
             head_size=64,
-            n_layer=8,
+            n_layer=4,
             infer_vec_nums=32,
             infer_dim=256,
             out_nums=4,
@@ -251,8 +251,8 @@ def train():
 
     train_env.setup_optimizers(
         learning_rate=2e-4,
-        warmup_iters=5000,
-        cos_T_0=4096,
+        warmup_iters=4096,
+        cos_T_0=1024 * 16,
         cos_T_mult=2,
         cos_eta_min=1e-6,
     )

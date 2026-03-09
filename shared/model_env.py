@@ -31,6 +31,7 @@ class TrainEnv:
         model: LLM_ModelBase,
     ):
         self.model = model
+        assert self.model is not None, "Model is not set"
         self.model.to(self.device).train()
         return self.model
 
