@@ -223,8 +223,8 @@ def train():
     current_dir = Path(__file__).resolve().parent
     torch.set_float32_matmul_precision("high")
     # hyperparameters
-    load_model = False
-    model_path = current_dir / Path("model/model_260000.pth")
+    load_model = True
+    model_path = current_dir / Path("model/model_1470000.pth")
     # ------------
     train_env = model_env.TrainEnv()
     train_env.setup_tensorboard(Path("/root/tf-logs/llm_fixed"))
@@ -250,7 +250,7 @@ def train():
     train_env.model_summary(input_size=(1, 512))
 
     train_env.setup_optimizers(
-        learning_rate=2e-4,
+        learning_rate=1e-4,
         warmup_iters=4096,
         cos_T_0=1024 * 16,
         cos_T_mult=2,
