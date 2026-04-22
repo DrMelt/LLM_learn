@@ -3,6 +3,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from .units import CharacterMapper, get_batch
+from .model_base import LLM_ModelBase
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -375,65 +376,18 @@ class Block_Self(nn.Module):
         return x
 
 
-class LLM_ModelBase(nn.Module):
-    def __init__(self, vocab_map: CharacterMapper, out_nums: int):
+class Vec2Word(nn.Module):
+    def __init__(
+        self, infer_n_embd: int, projection_dim: int, vocab_size: int, out_nums: int
+    ):
         super().__init__()
-        self.iter_n: int = 0
+        self.out_nums = out_nums
+        self.projection = nn.Linear(infer_n_embd, projection_dim, bias=False)
+        self.vec_to_word = nn.Linear(projection_dim, vocab_size, bias=False)
 
-        self.vocab_map: CharacterMapper = vocab_map
-        self.out_nums: int = out_nums
-
-    def train_step(
-        self,
-        data: torch.Tensor,
-        max_data_len: int,
-        batch_size: int,
-        optimizer: torch.optim.Optimizer,
-        scheduler: torch.optim.lr_scheduler.LRScheduler,
-    ):
-        raise NotImplementedError("train_step method must be implemented in subclass")
-
-    def generate(
-        self, idx: torch.Tensor, max_new_tokens: int, temperature: float = 1.0
-    ) -> torch.Tensor:
-        # idx is (B, T) array of indices in the current context
-        raise NotImplementedError("generate method must be implemented in subclass")
-
-    def _target_offset_func(self, block_size: int) -> int:
-        raise NotImplementedError(
-            "target_offset_func method must be implemented in subclass"
-        )
-
-    @torch.no_grad()
-    def estimate_loss(
-        self,
-        block_size_range: tuple[int, int],
-        batch_size: int,
-        eval_iters: int,
-        train_data: torch.Tensor,
-        val_data: torch.Tensor,
-    ):
-        out = {}
-        self.eval()
-        block_size_samples = torch.linspace(
-            block_size_range[0],
-            block_size_range[1],
-            steps=eval_iters,
-            dtype=torch.int32,
-        ).tolist()
-        data = {"train": train_data, "val": val_data}
-        for split in ["train", "val"]:
-            losses = torch.zeros(eval_iters)
-            for k in range(eval_iters):
-                X, Y = get_batch(
-                    data=data[split],
-                    block_size=block_size_samples[k],
-                    batch_size=batch_size,
-                    target_len=self.out_nums,
-                    target_offset=self._target_offset_func(block_size_samples[k]),
-                )
-                logits, loss = self(X, Y)
-                losses[k] = loss.item()
-            out[split] = losses.mean()
-        self.train()
-        return out
+    def forward(self, inference_vec):
+        # only use the first of the infer_vec_size dimension
+        first_vec = inference_vec[:, : self.out_nums, :]  # (B, out_nums, infer_n_embd)
+        first_vec = self.projection(first_vec)  # (B, out_nums, projection_dim)
+        logits = self.vec_to_word(first_vec)  # (B, out_nums, vocab_size)
+        return logits

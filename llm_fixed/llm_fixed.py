@@ -62,23 +62,6 @@ class LLMFixedBlocks(nn.Module):
         return b
 
 
-class LLMFixedVec2Word(nn.Module):
-    def __init__(
-        self, infer_n_embd: int, projection_dim: int, vocab_size: int, out_nums: int
-    ):
-        super().__init__()
-        self.out_nums = out_nums
-        self.projection = nn.Linear(infer_n_embd, projection_dim, bias=False)
-        self.vec_to_word = nn.Linear(projection_dim, vocab_size, bias=False)
-
-    def forward(self, inference_vec):
-        # only use the first of the infer_vec_size dimension
-        first_vec = inference_vec[:, : self.out_nums, :]  # (B, out_nums, infer_n_embd)
-        first_vec = self.projection(first_vec)  # (B, out_nums, projection_dim)
-        logits = self.vec_to_word(first_vec)  # (B, out_nums, vocab_size)
-        return logits
-
-
 class LLMFixedModel(module.LLM_ModelBase):
     def __init__(
         self,
@@ -114,7 +97,7 @@ class LLMFixedModel(module.LLM_ModelBase):
             b_embd=infer_dim,
         )
 
-        self.vec_to_word = LLMFixedVec2Word(
+        self.vec_to_word = module.Vec2Word(
             infer_n_embd=infer_dim,
             projection_dim=token_embd,
             vocab_size=vocab_map.max_vocab_size,

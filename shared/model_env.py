@@ -11,7 +11,7 @@ import pickle
 from torch.optim.lr_scheduler import LRScheduler
 
 from .units import CharacterMapper, get_batch
-from .module import LLM_ModelBase
+from .model_base import LLM_ModelBase
 
 
 class TrainEnv:

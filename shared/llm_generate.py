@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 import torch
 from torch.profiler import profile, ProfilerActivity, record_function
-from shared.module import LLM_ModelBase
+from shared.model_base import LLM_ModelBase
 
 if __name__ == "__main__":
     current_dir = Path(__file__).resolve().parent
