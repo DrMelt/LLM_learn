@@ -122,13 +122,15 @@ if __name__ == "__main__":
     # ).to(device)
     model = torch.load("model.pth", weights_only=False).to(device)
 
-    # Train and test splits
-    train_data = torch.tensor(
-        character_mapper.encode(text_train), dtype=torch.long, device=device
-    )
-    val_data = torch.tensor(
-        character_mapper.encode(text_val), dtype=torch.long, device=device
-    )
+    # Train and test splits（按条目封装为 list[torch.Tensor]）
+    train_data = [
+        torch.tensor(
+            character_mapper.encode(text_train), dtype=torch.long, device=device
+        )
+    ]
+    val_data = [
+        torch.tensor(character_mapper.encode(text_val), dtype=torch.long, device=device)
+    ]
 
     # print the number of parameters in the model
     print(sum(p.numel() for p in model.parameters()) / 1e6, "M parameters")

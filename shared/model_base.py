@@ -14,7 +14,7 @@ class LLM_ModelBase(nn.Module):
 
     def train_step(
         self,
-        data: torch.Tensor,
+        data: list[torch.Tensor],
         max_data_len: int,
         batch_size: int,
         optimizer: torch.optim.Optimizer,
@@ -39,8 +39,8 @@ class LLM_ModelBase(nn.Module):
         block_size_range: tuple[int, int],
         batch_size: int,
         eval_iters: int,
-        train_data: torch.Tensor,
-        val_data: torch.Tensor,
+        train_data: list[torch.Tensor],
+        val_data: list[torch.Tensor],
     ):
         out = {}
         self.eval()

@@ -141,7 +141,9 @@ class LLMRecurrentModel(module.LLM_ModelBase):
         )  # (B, info_vec_size, info_n_embd)
         token_vec = self.embedder.embed(idx)  # (B,T,C)
 
-        inference_vec = self.blocks(token_vec, inference_vec)  # (B, info_vec_size, info_n_embd)
+        inference_vec = self.blocks(
+            token_vec, inference_vec
+        )  # (B, info_vec_size, info_n_embd)
         logits = self.vec_to_word(inference_vec)  # (B, vocab_size)
 
         if targets is None:
@@ -177,7 +179,7 @@ class LLMRecurrentModel(module.LLM_ModelBase):
 
     def train_step(
         self,
-        data: torch.Tensor,
+        data: list[torch.Tensor],
         max_data_len: int,
         batch_size: int,
         optimizer: torch.optim.Optimizer,

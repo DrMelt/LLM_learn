@@ -179,7 +179,7 @@ class LLMFixedModel(module.LLM_ModelBase):
 
     def train_step(
         self,
-        data: torch.Tensor,
+        data: list[torch.Tensor],
         max_data_len: int,
         batch_size: int,
         optimizer: torch.optim.Optimizer,
@@ -193,7 +193,7 @@ class LLMFixedModel(module.LLM_ModelBase):
             target_len=self.out_nums,
             target_offset=data_sample_len,
         )
-        logits, loss = self(xb, yb)
+        _, loss = self(xb, yb)
         loss = loss * (data_sample_len / (data_sample_len + 8.0))
         optimizer.zero_grad()
         loss.backward()
@@ -214,18 +214,18 @@ def train():
     train_env.setup_tensorboard(Path("/root/tf-logs/llm_fixed"))
 
     if load_model == False:
-        with (current_dir / Path("../data_buffer/character_mapper.pkl")).open(
-            "rb"
-        ) as f:
+        with (
+            current_dir / Path("../data_buffer/pretrain_t2t_mini/character_mapper.pkl")
+        ).open("rb") as f:
             character_mapper: units.CharacterMapper = pickle.load(f)
         model = LLMFixedModel(
             character_mapper,
-            token_embd=64,
+            token_embd=192,
             head_nums=4,
-            head_size=32,
+            head_size=64,
             n_layer=4,
-            infer_vec_nums=16,
-            infer_dim=128,
+            infer_vec_nums=32,
+            infer_dim=384,
             forecast_steps=1,
         )
         train_env.set_model(model)
@@ -242,14 +242,14 @@ def train():
     )
 
     train_env.load_data(
-        current_dir / Path("../data_buffer/train_data.pt"),
-        current_dir / Path("../data_buffer/val_data.pt"),
+        current_dir / Path("../data_buffer/pretrain_t2t_mini/train_data.pt"),
+        current_dir / Path("../data_buffer/pretrain_t2t_mini/val_data.pt"),
     )
 
     train_env.train_loop(
         save_iters=10000,
         eval_interval=1000,
-        batch_size=1024,
+        batch_size=512,
         eval_iters=10,
         max_data_len=256,
         save_dir=current_dir / Path("model"),

@@ -22,8 +22,8 @@ class TrainEnv:
         self.optimizer: Optional[torch.optim.Optimizer] = None
         self.scheduler: Optional[LRScheduler] = None
         self.writer: Optional[SummaryWriter] = None
-        self.train_data: Optional[torch.Tensor] = None
-        self.val_data: Optional[torch.Tensor] = None
+        self.train_data: Optional[list[torch.Tensor]] = None
+        self.val_data: Optional[list[torch.Tensor]] = None
 
     def set_model(
         self,
@@ -80,7 +80,7 @@ class TrainEnv:
         return self.optimizer, self.scheduler
 
     def load_data(self, train_data_path: Path, val_data_path: Path):
-        """加载训练和验证数据"""
+        """加载训练和验证数据（list[torch.Tensor]）"""
         self.train_data = torch.load(train_data_path)
         self.val_data = torch.load(val_data_path)
         return self.train_data, self.val_data

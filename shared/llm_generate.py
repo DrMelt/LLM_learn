@@ -23,8 +23,11 @@ if __name__ == "__main__":
         device=device,
     ).view(1, -1)
 
-    open("more.txt", "w").write(
-        character_mapper.decode(
-            model.generate(context, max_new_tokens=2000, temperature=1.0)[0].tolist()
+    with open("more.txt", "w") as f:
+        f.write(
+            character_mapper.decode(
+                model.generate(context, max_new_tokens=2000, temperature=1.0)[
+                    0
+                ].tolist()
+            )
         )
-    )

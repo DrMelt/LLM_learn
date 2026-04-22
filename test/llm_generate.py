@@ -16,7 +16,9 @@ if __name__ == "__main__":
     current_dir = Path(__file__).resolve().parent
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model: LLMFixedModel = (
-        torch.load(current_dir / f"model/model_{331*10000}.pth", weights_only=False)
+        torch.load(
+            project_root / f"llm_fixed/model/model_{16*10000}.pth", weights_only=False
+        )
         .to(device)
         .eval()
     )
@@ -30,8 +32,11 @@ if __name__ == "__main__":
         device=device,
     ).view(1, -1)
 
-    open(current_dir / "forecast.txt", "w").write(
-        character_mapper.decode(
-            model.generate(context, max_new_tokens=2000, temperature=1.0)[0].tolist()
+    with open(current_dir / "forecast.txt", "w") as f:
+        f.write(
+            character_mapper.decode(
+                model.generate(context, max_new_tokens=2000, temperature=1.0)[
+                    0
+                ].tolist()
+            )
         )
-    )
