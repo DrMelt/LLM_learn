@@ -97,10 +97,10 @@ class LLMRecurrentModel(module.LLM_ModelBase):
         )
 
         self.vec_to_word = module.Vec2Word(
-            infer_n_embd=infer_dim,
-            projection_dim=token_embd,
+            infer_embd_dim=infer_dim,
+            token_dim=token_embd,
             vocab_size=vocab_map.max_vocab_size,
-            out_nums=out_nums,
+            forecast_steps=out_nums,
         )
 
         self.register_buffer(
@@ -131,7 +131,7 @@ class LLMRecurrentModel(module.LLM_ModelBase):
     def forward(
         self, idx: torch.Tensor, targets: Optional[torch.Tensor] = None
     ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
-        B, T = idx.shape
+        B, _ = idx.shape
 
         inference_vec = self.infer_vec_embedder(
             self.get_buffer("infer_arange")
@@ -139,9 +139,9 @@ class LLMRecurrentModel(module.LLM_ModelBase):
         inference_vec = inference_vec.unsqueeze(0).expand(
             B, -1, -1
         )  # (B, info_vec_size, info_n_embd)
-        x = self.embedder.embed(idx)  # (B,T,C)
+        token_vec = self.embedder.embed(idx)  # (B,T,C)
 
-        inference_vec = self.blocks(x, inference_vec)  # (B, info_vec_size, info_n_embd)
+        inference_vec = self.blocks(token_vec, inference_vec)  # (B, info_vec_size, info_n_embd)
         logits = self.vec_to_word(inference_vec)  # (B, vocab_size)
 
         if targets is None:

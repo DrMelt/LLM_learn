@@ -1,4 +1,3 @@
-import os
 import sys
 from pathlib import Path
 import random
@@ -72,13 +71,13 @@ class LLMFixedModel(module.LLM_ModelBase):
         n_layer: int,
         infer_vec_nums: int,
         infer_dim: int,
-        out_nums: int,
+        forecast_steps: int,
     ):
         super().__init__(
             vocab_map=vocab_map,
-            out_nums=out_nums,
+            out_nums=forecast_steps,
         )
-        self.out_nums = out_nums
+        self.out_nums = forecast_steps
         self.token_embd = token_embd
         self.info_n_embd = infer_dim
         self.infer_vec_nums = infer_vec_nums
@@ -98,10 +97,10 @@ class LLMFixedModel(module.LLM_ModelBase):
         )
 
         self.vec_to_word = module.Vec2Word(
-            infer_n_embd=infer_dim,
-            projection_dim=token_embd,
+            infer_embd_dim=infer_dim,
+            token_dim=token_embd,
             vocab_size=vocab_map.max_vocab_size,
-            out_nums=out_nums,
+            forecast_steps=forecast_steps,
         )
 
         self.register_buffer(
@@ -132,7 +131,7 @@ class LLMFixedModel(module.LLM_ModelBase):
     def forward(
         self, idx: torch.Tensor, targets: Optional[torch.Tensor] = None
     ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
-        B, T = idx.shape
+        B, _ = idx.shape
 
         inference_vec = self.infer_vec_embedder(
             self.get_buffer("infer_arange")
@@ -140,16 +139,18 @@ class LLMFixedModel(module.LLM_ModelBase):
         inference_vec = inference_vec.unsqueeze(0).expand(
             B, -1, -1
         )  # (B, info_vec_size, info_n_embd)
-        x = self.embedder.embed(idx)  # (B,T,C)
+        token_vec = self.embedder.embed(idx)  # (B,T,C)
 
-        inference_vec = self.blocks(x, inference_vec)  # (B, info_vec_size, info_n_embd)
+        inference_vec = self.blocks(
+            token_vec, inference_vec
+        )  # (B, info_vec_size, info_n_embd)
         logits = self.vec_to_word(inference_vec)  # (B, vocab_size)
 
         if targets is None:
             loss = None
         else:
-            logits = logits.view(B * self.out_nums, -1)
-            targets = targets.view(-1)
+            logits = logits.view(B * self.out_nums, -1)  #  (B * out_nums, vocab_size)
+            targets = targets.view(-1)  # (B * out_nums,)
             loss = F.cross_entropy(logits, targets, reduction="none").view(
                 B, -1
             )  # (B, out_nums)
@@ -203,10 +204,10 @@ class LLMFixedModel(module.LLM_ModelBase):
 
 
 def train():
+    # torch.set_float32_matmul_precision("high")
     current_dir = Path(__file__).resolve().parent
-    torch.set_float32_matmul_precision("high")
     # hyperparameters
-    load_model = True
+    load_model = False
     model_path = current_dir / Path("model/model_1470000.pth")
     # ------------
     train_env = model_env.TrainEnv()
@@ -219,13 +220,13 @@ def train():
             character_mapper: units.CharacterMapper = pickle.load(f)
         model = LLMFixedModel(
             character_mapper,
-            token_embd=128,
+            token_embd=64,
             head_nums=4,
-            head_size=64,
+            head_size=32,
             n_layer=4,
-            infer_vec_nums=32,
-            infer_dim=256,
-            out_nums=4,
+            infer_vec_nums=16,
+            infer_dim=128,
+            forecast_steps=1,
         )
         train_env.set_model(model)
     else:
@@ -233,11 +234,11 @@ def train():
     train_env.model_summary(input_size=(1, 512))
 
     train_env.setup_optimizers(
-        learning_rate=1e-4,
+        learning_rate=2e-4,
         warmup_iters=4096,
         cos_T_0=1024 * 16,
         cos_T_mult=2,
-        cos_eta_min=1e-6,
+        cos_eta_min=1e-7,
     )
 
     train_env.load_data(
@@ -248,9 +249,9 @@ def train():
     train_env.train_loop(
         save_iters=10000,
         eval_interval=1000,
-        batch_size=256,
+        batch_size=1024,
         eval_iters=10,
-        max_data_len=512,
+        max_data_len=256,
         save_dir=current_dir / Path("model"),
     )
 

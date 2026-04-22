@@ -378,16 +378,34 @@ class Block_Self(nn.Module):
 
 class Vec2Word(nn.Module):
     def __init__(
-        self, infer_n_embd: int, projection_dim: int, vocab_size: int, out_nums: int
+        self, infer_embd_dim: int, token_dim: int, vocab_size: int, forecast_steps: int
     ):
         super().__init__()
-        self.out_nums = out_nums
-        self.projection = nn.Linear(infer_n_embd, projection_dim, bias=False)
-        self.vec_to_word = nn.Linear(projection_dim, vocab_size, bias=False)
+        self.forecast_steps = forecast_steps
+        self.infer_embd_dim = infer_embd_dim
+        # 位置嵌入生成查询向量 (forecast_steps, infer_n_embd)
+        self.position_embedding_table = nn.Embedding(forecast_steps, token_dim)
+        # 使用已有的 MultiHeadAttention_A2B 从 inference_vec 中 attend 出 forecast_steps 个输出
+        self.attention_a2b = MultiHeadAttention_A2B(
+            num_heads=4,
+            head_size=infer_embd_dim // 4,
+            a_embd=infer_embd_dim,
+            b_embd=token_dim,
+        )
+        self.vec_to_word = nn.Linear(token_dim, vocab_size, bias=False)
 
     def forward(self, inference_vec):
-        # only use the first of the infer_vec_size dimension
-        first_vec = inference_vec[:, : self.out_nums, :]  # (B, out_nums, infer_n_embd)
-        first_vec = self.projection(first_vec)  # (B, out_nums, projection_dim)
-        logits = self.vec_to_word(first_vec)  # (B, out_nums, vocab_size)
+        # inference_vec: (B, infer_vec_size, infer_embd_dim)
+        B = inference_vec.shape[0]
+
+        positions = torch.arange(
+            self.forecast_steps, device=device
+        )  # (forecast_steps, token_dim)
+        query_vec = (
+            self.position_embedding_table(positions).unsqueeze(0).expand(B, -1, -1)
+        )  # (B, forecast_steps, token_dim)
+        attended_vec = self.attention_a2b(
+            inference_vec, query_vec
+        )  # (B, forecast_steps, token_dim)
+        logits = self.vec_to_word(attended_vec)  # (B, forecast_steps, vocab_size)
         return logits

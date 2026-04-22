@@ -7,7 +7,6 @@ import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from torchinfo import summary
-import pickle
 from torch.optim.lr_scheduler import LRScheduler
 
 from .units import CharacterMapper, get_batch
